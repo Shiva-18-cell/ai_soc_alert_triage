@@ -1,0 +1,245 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOC Triage Center</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0b1120;
+            color: #e5e7eb;
+        }
+
+        header {
+            padding: 24px 5%;
+            background: #111b2e;
+            border-bottom: 1px solid #263349;
+        }
+
+        header h1 { margin: 0 0 8px; }
+        header p, .muted { color: #9ca3af; }
+
+        main {
+            max-width: 1200px;
+            margin: 28px auto;
+            padding: 0 20px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: #111b2e;
+            border: 1px solid #263349;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 18px;
+        }
+
+        .stat-number {
+            font-size: 30px;
+            font-weight: bold;
+            margin-top: 12px;
+        }
+
+        .incident-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            background: #374151;
+        }
+
+        .HIGH, .CRITICAL { color: #fca5a5; background: #451a1a; }
+        .MEDIUM { color: #fcd34d; background: #422006; }
+        .LOW { color: #86efac; background: #143523; }
+
+        .progress {
+            height: 8px;
+            background: #263349;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #f59e0b;
+        }
+
+        .details {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: 0;
+            padding: 10px 16px;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        button:hover { background: #1d4ed8; }
+
+        .timeline {
+            border-left: 2px solid #374151;
+            padding-left: 16px;
+            margin: 18px 0;
+        }
+
+        .timeline p { margin: 12px 0; }
+
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .success { background: #143523; }
+        .error { background: #451a1a; }
+
+        @media (max-width: 650px) {
+            .stats, .details { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+
+<body>
+<header>
+    <h1>SOC Triage Center</h1>
+    <p>Security event investigation and alert prioritization</p>
+</header>
+
+<main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="message {{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    <form action="{{ url_for('refresh') }}" method="post">
+        <button type="submit">Refresh Analysis</button>
+    </form>
+
+    <section class="stats" style="margin-top: 22px;">
+        <div class="card">
+            <div class="muted">Incidents</div>
+            <div class="stat-number">{{ total_incidents }}</div>
+        </div>
+
+        <div class="card">
+            <div class="muted">High / Critical</div>
+            <div class="stat-number">{{ high_priority }}</div>
+        </div>
+
+        <div class="card">
+            <div class="muted">Likely Benign</div>
+            <div class="stat-number">{{ likely_benign }}</div>
+        </div>
+    </section>
+
+    <h2>Incident Queue</h2>
+
+    {% if incidents %}
+        {% for incident in incidents %}
+            <article class="card">
+                <div class="incident-header">
+                    <h3>{{ incident.incident_id }}</h3>
+
+                    <span class="badge {{ incident.risk.risk_severity }}">
+                        {{ incident.risk.risk_severity }}
+                    </span>
+                </div>
+
+                <p>{{ incident.rule_name }}</p>
+
+                <div class="details">
+                    <div>
+                        <span class="muted">Username</span><br>
+                        {{ incident.username }}
+                    </div>
+
+                    <div>
+                        <span class="muted">Source IP</span><br>
+                        {{ incident.source_ip }}
+                    </div>
+
+                    <div>
+                        <span class="muted">Hostname</span><br>
+                        {{ incident.hostname }}
+                    </div>
+
+                    <div>
+                        <span class="muted">Failed logins</span><br>
+                        {{ incident.failed_attempts }}
+                    </div>
+                </div>
+
+                <strong>
+                    Risk score: {{ incident.risk.risk_score }}/100
+                </strong>
+
+                <div class="progress">
+                    <div class="progress-bar"
+                         style="width: {{ incident.risk.risk_score }}%;">
+                    </div>
+                </div>
+
+                <p>
+                    <span class="muted">Classification:</span>
+                    {{ incident.false_positive_analysis.classification }}
+                </p>
+
+                <h4>Why was it prioritized?</h4>
+                <ul>
+                    {% for reason in incident.risk.risk_reasons %}
+                        <li>{{ reason }}</li>
+                    {% else %}
+                        <li>No risk reasons recorded.</li>
+                    {% endfor %}
+                </ul>
+
+                <h4>Investigation Timeline</h4>
+                <div class="timeline">
+                    {% for event in incident.timeline %}
+                        <p>
+                            <strong>{{ event.timestamp }}</strong><br>
+                            Event {{ event.event_id }}:
+                            {{ event.description }}
+                        </p>
+                    {% else %}
+                        <p>No timeline events available.</p>
+                    {% endfor %}
+                </div>
+            </article>
+        {% endfor %}
+    {% else %}
+        <div class="card">
+            No incidents found. Run the pipeline to generate a report.
+        </div>
+    {% endif %}
+</main>
+</body>
+</html>
